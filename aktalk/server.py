@@ -67,6 +67,12 @@ def read(conn, mask):
 
 	except Exception as e:
 		print('server::read', e)
+		try:
+			i = mmsocks.index(mmconn)
+			mmsocks.pop(i)
+			conn.close()
+		except Exception as e:
+			print('server::read e2:', e)
 
 
 @unique

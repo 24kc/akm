@@ -9,6 +9,7 @@ from enum import IntEnum,unique
 from akm.aktalk.mmsock import *
 from akm.akes import Akes
 from akm.io.o import *
+from akm.c import getch
 
 def exit():
 	os._exit(1)
@@ -32,8 +33,16 @@ wait_print = 0
 
 def send():
 	while True:
+		print('>> ', end='', flush=True)
 		# need getch to wait print
-		s = input('>> ')
+		c = getch.getch()
+		if c == 0x0a:
+			print()
+			continue
+		else:
+			getch.ungetc(c)
+		###
+		s = input()
 		if not conn_stat:
 			print('Please wait for others to connect ...')
 			continue
@@ -64,7 +73,7 @@ def sem_proc(mmt):
 	'''Semaphore processing'''
 	global akes_rsa, akes_aes, conn_stat
 	if mmt == MMT.SM_NONE:
-		print('No one is online, waiting...')
+		print('No one is online, waiting...\n>> ', end='')
 	elif mmt == MMT.SM_PUBGEN:
 		print()
 		print('generate RSA keys ...')
@@ -242,6 +251,7 @@ def main(argv):
 		t_recv.join()
 	except Exception as e:
 		print('Client Error:', 'KeyboardInterrupt or maybe other errors')
+	getch.reset()
 	os._exit(1)
 
 if __name__ == '__main__':
