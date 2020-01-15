@@ -22,6 +22,8 @@ akes_rsa = None
 akes_aes = None
 # status
 conn_stat = False
+# my ip
+my_addr = None
 # the other addr (ip, port)
 the_other = None
 # message list
@@ -78,7 +80,7 @@ def sem_proc(mmt):
 		print('wait for public key ...')
 	elif mmt == MMT.SM_ENCRYPT:
 		print('send my addr(AES encrypted)')
-		laddr = str(mmsock.laddr()).encode()
+		laddr = str(my_addr).encode()
 		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
 	elif mmt == MMT.SM_CLOSE:
 		conn_stat = False
@@ -90,7 +92,7 @@ def sem_proc(mmt):
 
 def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 	'''Message processing'''
-	global akes_rsa, akes_aes, conn_stat, the_other
+	global akes_rsa, akes_aes, conn_stat, my_addr, the_other
 
 	if not data:
 		return sem_proc(mmt)
@@ -100,6 +102,11 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 
 	elif mmt == MMT.SERVER_MSG:
 		wprint(f'SERVER_MSG<< {data.decode()}')
+
+	elif mmt == MMT.CLIENT_ADDR:
+		my_ip = data.decode()
+		ipaddr,port = mmsock.laddr()
+		my_addr = (my_ip, port)
 
 	elif mmt == MMT.PUBLIC_KEY:
 		print('received the public key')
@@ -129,7 +136,7 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 		akes_aes.fernet(symkey)
 		print('send my addr(AES encrypted) ...')
 		mmsock.sendsem(MMT.SM_ENCRYPT)
-		laddr = str(mmsock.laddr()).encode()
+		laddr = str(my_addr).encode()
 		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
 
 	elif mmt == MMT.PLAIN_TEXT:
@@ -145,7 +152,7 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 		data = akes_aes.decrypt(data)
 		the_other = data.decode()
 		conn_stat = True
-		print('Now encrypt messages with aes !')
+		print(f'Connected to {the_other} [AES]')
 
 	elif mmt == MMT.COMMAND:
 		pass

@@ -23,7 +23,10 @@ def accept(sock, mask):
 	print('accepted', addr)
 	conn.setblocking(False)
 	selector.register(conn, selectors.EVENT_READ, read)
-	mmsocks.append(MMSock(conn))
+	mmconn = MMSock(conn)
+	mmsocks.append(mmconn)
+	ipaddr,port = mmconn.raddr()
+	mmconn.send(str(ipaddr).encode(), MMT.CLIENT_ADDR)
 	if len(mmsocks) > 1:
 		mmsocks[0].sendsem(MMT.SM_SYMGEN)
 		mmsocks[1].sendsem(MMT.SM_PUBGEN)

@@ -13,6 +13,7 @@ class MMT(IntEnum):
 	NULL = 0 # Not message
 
 	URGENT_MSG = -24 # Urgent message
+	CLIENT_ADDR = -20 # client ip
 	SERVER_MSG = -10 # Server message (str)
 
 	PUBLIC_KEY = 10 # Public key
@@ -112,7 +113,7 @@ class MMSock:
 
 	def raddr(self):
 		'''return peer name [noexcept]'''
-		name = ''
+		name = ('0',0)
 		try:
 			name = self.sock.getpeername()
 		except Exception as e:
@@ -121,7 +122,7 @@ class MMSock:
 
 	def laddr(self):
 		'''return peer name [noexcept]'''
-		name = ''
+		name = ('0',0)
 		try:
 			name = self.sock.getsockname()
 		except Exception as e:
