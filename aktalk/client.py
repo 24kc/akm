@@ -4,9 +4,11 @@ __all__ = ('OPT', 'help', 'main')
 
 import socket, os, sys, signal
 from threading import Thread
+from queue import Queue
 from enum import IntEnum,unique
 from akm.aktalk.mmsock import *
 from akm.akes import Akes
+from akm.io.o import *
 
 def exit():
 	os._exit(1)
@@ -16,100 +18,141 @@ signal.signal(signal.SIGINT, exit)
 # Client MMSock
 mmsock = None
 # Akes
-akes = None
+akes_rsa = None
+akes_aes = None
+# status
+conn_stat = False
+# the other addr (ip, port)
+the_other = None
+# message list
+msg_list = []
+wait_print = 0
 
 def send():
 	while True:
+		# need getch to wait print
 		s = input('>> ')
-		if not akes:
-			print('wait ...')
+		if not conn_stat:
+			print('Please wait for others to connect ...')
 			continue
+		while msg_list:
+			print(msg_list[0], end='')
+			del msg_list[0]
 		if s:
-			mmsock.send(akes.encrypt(s.encode()), MMT.CIPHER_TEXT)
+			mmsock.send(akes_aes.encrypt(s.encode()), MMT.CIPHER_TEXT)
 
 def recv():
 	while True:
 		data,mmt = mmsock.recv()
 		flag = msg_proc(data, mmt)
 		if not flag:
-			print('\nERROR: connect to server closed\n>> ', end='')
+			print('\nERROR: connect to server closed', end='')
 			os._exit(1)
 
 
 def wprint(*objects, **kwargs):
 	'''print, may have to wait for a while'''
-	print(*objects, **kwargs)
+	if wait_print:
+		s = sprint(*objects, **kwargs)
+		msg_list.append(s)
+	else:
+		print(*objects, **kwargs)
 
 def sem_proc(mmt):
 	'''Semaphore processing'''
-	global akes
+	global akes_rsa, akes_aes, conn_stat
 	if mmt == MMT.SM_NONE:
 		print('No one is online, waiting...')
 	elif mmt == MMT.SM_PUBGEN:
-		akes = Akes.new('RSA')
+		print()
 		print('generate RSA keys ...')
-		rsa = akes.generate_key()
-		akes.fernet(rsa)
+		akes_rsa = Akes.new('RSA')
+		rsa = akes_rsa.generate_key()
+		akes_rsa.fernet(rsa)
 		der = rsa.publickey().exportKey('DER')
 		print('send public key ...')
 		mmsock.send(der, MMT.PUBLIC_KEY)
 		print('wait for AES key ...')
 	elif mmt == MMT.SM_SYMGEN:
+		print()
 		print('wait for public key ...')
 	elif mmt == MMT.SM_ENCRYPT:
-		print('Now encrypt messages with aes !')
+		print('send my addr(AES encrypted)')
+		laddr = str(mmsock.laddr()).encode()
+		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
+	elif mmt == MMT.SM_CLOSE:
+		conn_stat = False
+		print()
+		print(f'Warning<< {the_other} is disconnected')
 	else:
 		return False
 	return True
 
 def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 	'''Message processing'''
-	global akes
+	global akes_rsa, akes_aes, conn_stat, the_other
+
 	if not data:
 		return sem_proc(mmt)
+
 	if mmt == MMT.URGENT_MSG:
 		print('\nURGENT_MSG<<', data.decode())
+
 	elif mmt == MMT.SERVER_MSG:
 		wprint(f'SERVER_MSG<< {data.decode()}')
+
 	elif mmt == MMT.PUBLIC_KEY:
 		print('received the public key')
-		rsa = Akes.new('RSA')
+		print('check public key ...')
+		akes_rsa = Akes.new('RSA')
 		try:
-			pubkey = rsa.import_key(data)
+			pubkey = akes_rsa.import_key(data)
 		except Exception as e:
 			print('Bad public key:', e)
 			return False
-		rsa.fernet(pubkey)
+		akes_rsa.fernet(pubkey)
 		print('generate AES key ...')
-		aes = Akes.new('AES')
-		symkey = aes.generate_key(256)
+		akes_aes = Akes.new('AES')
+		symkey = akes_aes.generate_key(256)
 		print('encrypt AES key with public key ...')
-		symkey_rsa = rsa.encrypt(symkey)
+		symkey_rsa = akes_rsa.encrypt(symkey)
 		print('send AES key ...')
+		akes_aes.fernet(symkey)
 		mmsock.send(symkey_rsa, MMT.SYMM_KEY)
-		akes = aes
-		akes.fernet(symkey)
 
 	elif mmt == MMT.SYMM_KEY:
 		print('received the AES key')
 		print('decrypt AES key with private key ...')
-		symkey = akes.decrypt(data)
+		symkey = akes_rsa.decrypt(data)
 		print('set AES key ...')
-		akes = Akes.new('AES')
-		akes.fernet(symkey)
+		akes_aes = Akes.new('AES')
+		akes_aes.fernet(symkey)
+		print('send my addr(AES encrypted) ...')
 		mmsock.sendsem(MMT.SM_ENCRYPT)
-		print('Now encrypt messages with aes !')
+		laddr = str(mmsock.laddr()).encode()
+		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
+
 	elif mmt == MMT.PLAIN_TEXT:
-		wprint(f'P<< {data.decode()}')
+		wprint(f'{the_other:}P<< {data.decode()}')
+
 	elif mmt == MMT.CIPHER_TEXT:
 		# decrypt
-		wprint('cipher text:', data)
-		data = akes.decrypt(data)
-		wprint(f'C<< {data.decode()}')
+		data = akes_aes.decrypt(data)
+		wprint(f'{the_other:}C<< {data.decode()}')
+
+	elif mmt == MMT.CIPHER_ADDR:
+		print('recv the other addr ...')
+		data = akes_aes.decrypt(data)
+		the_other = data.decode()
+		conn_stat = True
+		print('Now encrypt messages with aes !')
+
 	elif mmt == MMT.COMMAND:
 		pass
+
 	else:
 		raise ValueError('msg_proc error', mmt)
+
 	return True
 
 

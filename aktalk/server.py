@@ -25,8 +25,10 @@ def accept(sock, mask):
 	selector.register(conn, selectors.EVENT_READ, read)
 	mmsocks.append(MMSock(conn))
 	if len(mmsocks) > 1:
-			mmsocks[0].sendsem(MMT.SM_SYMGEN)
-			mmsocks[1].sendsem(MMT.SM_PUBGEN)
+		mmsocks[0].sendsem(MMT.SM_SYMGEN)
+		mmsocks[1].sendsem(MMT.SM_PUBGEN)
+	else:
+		mmsocks[0].sendsem(MMT.SM_NONE)
 
 def read(conn, mask):
 	'''[noexcept]'''
@@ -43,9 +45,9 @@ def read(conn, mask):
 				mmconn.sendsem(MMT.SM_NONE)
 			else:
 				# forward
-				print('forward:', mmt)
 				dprint('len(mmsocks) =', len(mmsocks))
 				other = mmsocks[1] if mmsocks[0] == mmconn else mmsocks[0]
+				print('forward:', mmt, 'from', addr, 'to', other.raddr())
 				if data:
 					other.send(data, mmt)
 				else:
@@ -56,7 +58,7 @@ def read(conn, mask):
 			dprint('mmsocks.index(mmconn) =', i)
 			mmsocks.pop(i)
 			if mmsocks:
-				mmsocks[0].send(f'connect to {name} closed'.encode(), MMT.SERVER_MSG)
+				mmsocks[0].sendsem(MMT.SM_CLOSE)
 			selector.unregister(conn)
 			conn.close()
 
@@ -130,6 +132,7 @@ def main(argv):
 	sock.listen(2)
 	sock.setblocking(False)
 	selector.register(sock, selectors.EVENT_READ, accept)
+	print('server start')
 
 	while True:
 		events = selector.select()

@@ -92,9 +92,7 @@ and use key load from file when encrypting/decrypting')
 			ba.extend(tb)
 		return bytes(ba)
 
-	# expand
-	#def export_key(self):
-	#	return 
+	### expand ###
 
 	def import_key(self, b):
 		return Cipher.importKey(b)

@@ -13,19 +13,21 @@ class MMT(IntEnum):
 	NULL = 0 # Not message
 
 	URGENT_MSG = -24 # Urgent message
-	SERVER_MSG = -1 # Server message (str)
+	SERVER_MSG = -10 # Server message (str)
 
-	PUBLIC_KEY = 1 # Public key
-	SYMM_KEY = 2 # Symmetric key
-	PLAIN_TEXT = 3 # Plain text
-	CIPHER_TEXT = 4 # Cipher text
-	COMMAND = 5 # command
+	PUBLIC_KEY = 10 # Public key
+	SYMM_KEY = 20 # Symmetric key
+	PLAIN_TEXT = 30 # Plain text
+	CIPHER_TEXT = 40 # Cipher text
+	CIPHER_ADDR = 50 # Cipher addr (ip, port)
+	COMMAND = 60 # command
 
 	# semaphore message:
 	SM_NONE = 0x2410 # no one is online
 	SM_PUBGEN = 0x2420 # generate public key
 	SM_SYMGEN = 0x2430 # generate symmetric key
 	SM_ENCRYPT = 0x2440 # start encrypt messages
+	SM_CLOSE = 0x2450 # the other is disconnected
 
 MAX_RECV = 1024 # Maximum receive size per time
 
@@ -115,6 +117,15 @@ class MMSock:
 			name = self.sock.getpeername()
 		except Exception as e:
 			print('MMSock::raddr', e)
+		return name
+
+	def laddr(self):
+		'''return peer name [noexcept]'''
+		name = ''
+		try:
+			name = self.sock.getsockname()
+		except Exception as e:
+			print('MMSock::laddr', e)
 		return name
 
 
