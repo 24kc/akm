@@ -2,7 +2,7 @@
 
 __all__ = ('OPT', 'help', 'main')
 
-import selectors, socket, sys
+import selectors, socket, sys, time
 from enum import IntEnum,unique
 from akm.aktalk.mmsock import *
 from akm.debug.cdb import *
@@ -14,11 +14,10 @@ set_debug(0)
 selector = selectors.DefaultSelector()
 # MMSock for mmsocks
 mmsocks = []
-# others name
-NAME = '[others]'
+# mmsock hp
+mm_hp = MM_HP
 
 def accept(sock, mask):
-	name = NAME
 	conn, addr = sock.accept()  # Should be ready
 	print('accepted', addr)
 	conn.setblocking(False)
@@ -27,7 +26,10 @@ def accept(sock, mask):
 	mmsocks.append(mmconn)
 	ipaddr,port = mmconn.raddr()
 	mmconn.send(str(ipaddr).encode(), MMT.CLIENT_ADDR)
-	if len(mmsocks) > 1:
+	cn = len(mmsocks)
+	if cn > 2:
+		mmsocks[-1].sendsem(MMT.SM_BUSY)
+	elif cn > 1:
 		mmsocks[0].sendsem(MMT.SM_SYMGEN)
 		mmsocks[1].sendsem(MMT.SM_PUBGEN)
 	else:
@@ -37,11 +39,15 @@ def read(conn, mask):
 	'''[noexcept]'''
 	mmconn = MMSock(conn)
 	addr = mmconn.raddr()
-	name = NAME
 
 	data,mmt = mmconn.recv()
 
 	try:
+		if mmt == MMT.HEART_BEAT:
+			i = mmsocks.index(mmconn)
+			mmsocks[i].HP = mm_hp
+			return
+
 		if data or mmt:
 			assert mmsocks
 			if len(mmsocks) == 1:
@@ -80,6 +86,7 @@ class OPT(IntEnum):
 	'''options'''
 	IP = 0x2411
 	PORT = 0x2412
+	MMHP = 0x2420
 	HELP = 0x2499
 	NULL = 0
 
@@ -87,12 +94,15 @@ options = {
 	'-ip': OPT.IP,
 	'-p': OPT.PORT,
 	'-port': OPT.PORT,
+	'-hp': OPT.MMHP,
 	'-h': OPT.HELP,
 	'-help': OPT.HELP
 }
 
 
 def main(argv):
+	global mm_hp
+
 	argc = len(argv); optind = 0
 
 	ip = '0.0.0.0'
@@ -114,6 +124,7 @@ def main(argv):
 				ip = argstr
 			else:
 				opt = OPT.NULL
+
 		elif opt == OPT.PORT:
 			optind += 1
 			if optind < argc:
@@ -125,9 +136,23 @@ def main(argv):
 					sys.exit(1)
 			else:
 				opt = OPT.NULL
+
+		elif opt == OPT.MMHP:
+			optind += 1
+			if optind < argc:
+				argstr = argv[optind]
+				try:
+					mm_hp = int(argstr)
+				except ValueError:
+					print('HP must be a int not', argstr)
+					sys.exit(1)
+			else:
+				opt = OPT.NULL
+
 		elif opt == OPT.HELP:
 			help(argv)
 			sys.exit()
+
 		else:
 			assert False,'getopt error'
 
@@ -143,11 +168,40 @@ def main(argv):
 	selector.register(sock, selectors.EVENT_READ, accept)
 	print('server start')
 
+	timer = time.time()
+	tmout = MM_TMOUT
+
 	while True:
-		events = selector.select()
+		events = selector.select(tmout)
 		for key, mask in events:
 			callback = key.data
 			callback(key.fileobj, mask)
+
+		t = time.time()
+		if t < timer + tmout:
+			continue
+
+		for mm in mmsocks:
+			mm.HP -= 1
+			if mm.HP > 0:
+				continue
+			try:
+				conn = mm.sock
+				addr = mm.raddr()
+				print('Time out! closing', addr)
+				selector.unregister(conn)
+				conn.close()
+				mmsocks.remove(mm)
+			except Exception as e:
+				print('TMOUT deal:', e)
+			cn = len(mmsocks)
+			if cn == 1:
+				mmsocks[0].sendsem(MMT.SM_CLOSE)
+			if len(mmsocks) >= 2:
+				mmsocks[0].sendsem(MMT.SM_SYMGEN)
+				mmsocks[1].sendsem(MMT.SM_PUBGEN)
+
+		timer = t
 
 
 def help(argv):
@@ -155,6 +209,7 @@ def help(argv):
 	print('Valid options are:')
 	print(' -ip IP            Set IP address')
 	print(' -p/-port PORT     Set the port to be used')
+	print(' -hp HP            Set the heart beat packet num')
 	print(' -h/-help          Display this message')
 
 if __name__ == '__main__':

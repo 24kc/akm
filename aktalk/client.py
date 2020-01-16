@@ -2,7 +2,7 @@
 
 __all__ = ('OPT', 'help', 'main')
 
-import socket, os, sys, signal
+import socket, os, sys, signal, time
 from threading import Thread
 from queue import Queue
 from enum import IntEnum,unique
@@ -63,6 +63,11 @@ def recv():
 			cache_print()
 			os._exit(1)
 
+def heart_beat():
+	while True:
+		mmsock.sendsem(MMT.HEART_BEAT)
+		time.sleep(MM_TMOUT)
+
 def wprint(*objects, **kwargs):
 	'''print, may have to wait for a while'''
 	s = sprint(*objects, **kwargs)
@@ -81,8 +86,10 @@ def cache_print():
 def sem_proc(mmt):
 	'''Semaphore processing'''
 	global akes_rsa, akes_aes, conn_stat
+
 	if mmt == MMT.SM_NONE:
 		print('\nNo one is online, waiting...', end=msg_end)
+
 	elif mmt == MMT.SM_PUBGEN:
 		print()
 		print('generate RSA keys ...')
@@ -93,20 +100,28 @@ def sem_proc(mmt):
 		print('send public key ...')
 		mmsock.send(der, MMT.PUBLIC_KEY)
 		print('wait for AES key ...')
+
 	elif mmt == MMT.SM_SYMGEN:
 		print('\n')
 		print('wait for public key ...')
+
 	elif mmt == MMT.SM_ENCRYPT:
 		print('send my addr(AES encrypted)')
 		laddr = str(my_addr).encode()
 		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
+
+	elif mmt == MMT.SM_BUSY:
+		print('\ne, There are already at least 2 users connected to the server', end=msg_end)
+
 	elif mmt == MMT.SM_CLOSE:
 		conn_stat = False
 		cache_print()
 		print()
 		print(f'Warning<< {the_other} is disconnected', end=msg_end)
+
 	else:
 		return False
+
 	return True
 
 def msg_proc(data, mmt=MMT.PLAIN_TEXT):
@@ -120,7 +135,7 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 		print('\nURGENT_MSG<<', data.decode(), end=msg_end)
 
 	elif mmt == MMT.SERVER_MSG:
-		wprint(f'SERVER_MSG<< {data.decode()}')
+		wprint(f'SERVER_MSG<< {data.decode()}', end='')
 
 	elif mmt == MMT.CLIENT_ADDR:
 		my_ip = data.decode()
@@ -251,9 +266,11 @@ def main(argv):
 	sock.connect((ip, port))
 
 	try:
+		t_heart = Thread(target=heart_beat)
 		t_send = Thread(target=send)
 		t_recv = Thread(target=recv)
 
+		t_heart.start()
 		t_send.start()
 		t_recv.start()
 

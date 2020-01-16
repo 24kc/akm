@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-__all__ = ('MMT', 'socket_reuse', 'MMSock')
+__all__ = ('MM_TMOUT', 'MM_HP', 'MMT', 'socket_reuse', 'MMSock')
 
 from enum import IntEnum,unique
 from akm.debug.cdb import *
@@ -11,6 +11,8 @@ set_debug(0)
 class MMT(IntEnum):
 	'''Message Type'''
 	NULL = 0 # Not message
+
+	HEART_BEAT = -30 # heart beat
 
 	URGENT_MSG = -24 # Urgent message
 	CLIENT_ADDR = -20 # client ip
@@ -29,8 +31,12 @@ class MMT(IntEnum):
 	SM_SYMGEN = 0x2430 # generate symmetric key
 	SM_ENCRYPT = 0x2440 # start encrypt messages
 	SM_CLOSE = 0x2450 # the other is disconnected
+	SM_BUSY = 0x2460 # server is busy
 
 MAX_RECV = 1024 # Maximum receive size per time
+
+MM_TMOUT = 1
+MM_HP = 3
 
 class MMSock:
 	'''
@@ -38,6 +44,7 @@ class MMSock:
 	strong exception-safety guarantee
 	'''
 	sock = None
+	HP = MM_HP
 
 	def __init__(self, sock):
 		'''[noexcept]'''
@@ -52,7 +59,7 @@ class MMSock:
 		try:
 			t = int(mmt)
 			head = int.to_bytes(t, 4, 'little', signed=True) + b'\0\0\0\0'
-			self.sock.send(head)
+			n = self.sock.send(head)
 			dprint('MMSock::sendsem< head OK:', head)
 		except Exception as e:
 			print('MMSock::sendsem', e)
