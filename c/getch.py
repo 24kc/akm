@@ -10,8 +10,12 @@ def getch():
 def getche():
 	return _getch.getche()
 
+def reset():
+	_getch.end_getch()
+
 def ungetc(c):
 	return _getch.unget(c)
 
-def reset():
-	_getch.end_getch()
+def putchar(c):
+	_getch.putch(c)
+

@@ -7,9 +7,9 @@ def sprint(*objects, **kwargs):
 
 	sep = kwargs.get('sep')
 	end = kwargs.get('end')
-	if not sep:
+	if sep is None:
 		sep = ' '
-	if not end:
+	if end is None:
 		end = '\n'
 
 	for o in objects:

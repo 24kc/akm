@@ -29,26 +29,28 @@ my_addr = None
 the_other = None
 # message list
 msg_list = []
-wait_print = 0
+wait_print = False
+msg_end = '\n>> '
+
 
 def send():
+	global wait_print
 	while True:
+		wait_print = False
 		print('>> ', end='', flush=True)
 		# need getch to wait print
-		c = getch.getch()
+		c = getch.getche()
 		if c == 0x0a:
-			print()
 			continue
 		else:
+			wait_print = True
 			getch.ungetc(c)
 		###
 		s = input()
 		if not conn_stat:
 			print('Please wait for others to connect ...')
 			continue
-		while msg_list:
-			print(msg_list[0], end='')
-			del msg_list[0]
+		cache_print()
 		if s:
 			mmsock.send(akes_aes.encrypt(s.encode()), MMT.CIPHER_TEXT)
 
@@ -57,23 +59,30 @@ def recv():
 		data,mmt = mmsock.recv()
 		flag = msg_proc(data, mmt)
 		if not flag:
-			print('\nERROR: connect to server closed', end='')
+			print('\n\nERROR: connect to server closed')
+			cache_print()
 			os._exit(1)
-
 
 def wprint(*objects, **kwargs):
 	'''print, may have to wait for a while'''
+	s = sprint(*objects, **kwargs)
 	if wait_print:
-		s = sprint(*objects, **kwargs)
 		msg_list.append(s)
 	else:
-		print(*objects, **kwargs)
+		print(f'\n{s}\n>> ', end='')
+
+def cache_print():
+	if msg_list:
+		print()
+	while msg_list:
+		print('cache<<', msg_list[0])
+		del msg_list[0]
 
 def sem_proc(mmt):
 	'''Semaphore processing'''
 	global akes_rsa, akes_aes, conn_stat
 	if mmt == MMT.SM_NONE:
-		print('No one is online, waiting...\n>> ', end='')
+		print('\nNo one is online, waiting...', end=msg_end)
 	elif mmt == MMT.SM_PUBGEN:
 		print()
 		print('generate RSA keys ...')
@@ -85,7 +94,7 @@ def sem_proc(mmt):
 		mmsock.send(der, MMT.PUBLIC_KEY)
 		print('wait for AES key ...')
 	elif mmt == MMT.SM_SYMGEN:
-		print()
+		print('\n')
 		print('wait for public key ...')
 	elif mmt == MMT.SM_ENCRYPT:
 		print('send my addr(AES encrypted)')
@@ -93,8 +102,9 @@ def sem_proc(mmt):
 		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
 	elif mmt == MMT.SM_CLOSE:
 		conn_stat = False
+		cache_print()
 		print()
-		print(f'Warning<< {the_other} is disconnected')
+		print(f'Warning<< {the_other} is disconnected', end=msg_end)
 	else:
 		return False
 	return True
@@ -107,7 +117,7 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 		return sem_proc(mmt)
 
 	if mmt == MMT.URGENT_MSG:
-		print('\nURGENT_MSG<<', data.decode())
+		print('\nURGENT_MSG<<', data.decode(), end=msg_end)
 
 	elif mmt == MMT.SERVER_MSG:
 		wprint(f'SERVER_MSG<< {data.decode()}')
@@ -149,19 +159,19 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 		mmsock.send(akes_aes.encrypt(laddr), MMT.CIPHER_ADDR)
 
 	elif mmt == MMT.PLAIN_TEXT:
-		wprint(f'{the_other:}P<< {data.decode()}')
+		wprint(f'P<< {data.decode()}', end='')
 
 	elif mmt == MMT.CIPHER_TEXT:
 		# decrypt
 		data = akes_aes.decrypt(data)
-		wprint(f'{the_other:}C<< {data.decode()}')
+		wprint(f'C<< {data.decode()}', end='')
 
 	elif mmt == MMT.CIPHER_ADDR:
 		print('recv the other addr ...')
 		data = akes_aes.decrypt(data)
 		the_other = data.decode()
 		conn_stat = True
-		print(f'Connected to {the_other} [AES]')
+		print(f'Connected to {the_other} [AES]', end=msg_end)
 
 	elif mmt == MMT.COMMAND:
 		pass
@@ -250,8 +260,9 @@ def main(argv):
 		t_send.join()
 		t_recv.join()
 	except Exception as e:
-		print('Client Error:', 'KeyboardInterrupt or maybe other errors')
+		print('\n\nClient Error:', 'KeyboardInterrupt or maybe other errors')
 	getch.reset()
+	cache_print()
 	os._exit(1)
 
 if __name__ == '__main__':

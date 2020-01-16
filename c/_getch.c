@@ -23,6 +23,12 @@ void unget(int c)
 	ungetc(c, stdin);
 }
 
+// putc
+void putch(int c)
+{
+	putchar(c);
+}
+
 static unsigned int getch_is_init = 0;
 
 void
