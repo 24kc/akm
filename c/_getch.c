@@ -16,18 +16,12 @@ void set_getch();
 void set_getche();
 int getch();
 int getche();
+int peek();
 
 // ungetc
-void unget(int c)
-{
-	ungetc(c, stdin);
-}
-
-// putc
-void putch(int c)
-{
-	putchar(c);
-}
+void unget(int c) { ungetc(c, stdin); }
+// putchar
+void putch(int c) { putchar(c); }
 
 
 static unsigned int getch_is_init = 0;
@@ -90,6 +84,14 @@ getche()
 	tcsetattr(0, TCSANOW, &term_getche);
 	c = getchar();
 	tcsetattr(0, TCSANOW, &term_save);
+	return c;
+}
+
+int
+peek()
+{
+	int c = getch();
+	ungetc(c, stdin);
 	return c;
 }
 

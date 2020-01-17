@@ -182,6 +182,7 @@ def main(argv):
 	sock.bind((ip, port))
 	sock.listen(2)
 	sock.setblocking(False)
+	mm_setblocking(False)
 	selector.register(sock, selectors.EVENT_READ, accept)
 	print('server start')
 

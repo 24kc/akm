@@ -1,11 +1,32 @@
 #!/usr/bin/env python3
 
-__all__ = ('MM_TMOUT', 'MM_HP', 'MMT', 'socket_reuse', 'MMSock')
+__all__ = ('MM_TMOUT', 'MM_HP', 'MMT', 'mm_setblocking', 'socket_reuse', 'MMSock')
 
 from enum import IntEnum,unique
 from akm.debug.cdb import *
 
 set_debug(0)
+
+block_state = True
+def mm_setblocking(flag):
+	global block_state
+	block_state = flag
+
+def mm_send(sock, b):
+	sock.setblocking(True)
+	sock.send(b)
+	sock.setblocking(block_state)
+
+def mm_sendall(sock, b):
+	sock.setblocking(True)
+	sock.sendall(b)
+	sock.setblocking(block_state)
+
+def mm_recv(sock, size):
+	sock.setblocking(True)
+	b = sock.recv(size)
+	sock.setblocking(block_state)
+	return b
 
 @unique
 class MMT(IntEnum):
@@ -75,8 +96,8 @@ class MMSock:
 			b_len = len(b)
 			head = int.to_bytes(t, 4, 'little', signed=True) + int.to_bytes(b_len, 4, 'little')
 			dprint('MMSock::send< head:', head)
-			#self.sock.send(head) # send head with data
-			self.sock.sendall(head + b)
+			#mm_send(self.sock, head) # send head with data
+			mm_sendall(self.sock, head + b)
 			dprint('MMSock::send< head OK')
 			dprint('MMSock::send< data OK')
 		except Exception as e:
@@ -89,7 +110,7 @@ class MMSock:
 		try:
 			NULL = (b'', MMT.NULL)
 			dprint('MMSock::recv> wait for recv head')
-			head = self.sock.recv(8)
+			head = mm_recv(self.sock, 8)
 			dprint('MMSock::recv> head OK')
 			if not head:
 				return NULL
@@ -105,7 +126,7 @@ class MMSock:
 				assert remain > 0
 				block_size = MAX_RECV if remain > MAX_RECV else remain
 				dprint('MMSock::recv> data: wait for recv', block_size, 'bytes')
-				b = self.sock.recv(block_size)
+				b = mm_recv(self.sock, block_size)
 				if not b:
 					dprint('MMSock::recv> data: recv ERROR')
 					return NULL

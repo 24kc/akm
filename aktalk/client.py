@@ -107,6 +107,7 @@ def send_file(fname):
 		print('File does not exist or is unreadable')
 		return 1
 	content = open(fname, 'rb').read()
+	content = akes_aes.encrypt(content)
 	if not content:
 		print('Empty file, cancel sending')
 		return 1
@@ -128,7 +129,8 @@ def recv_file(data):
 		fname = data[4: fnlen+4].decode()
 		fname = ddir + '/' + fname
 		fname = fm.unique_fname(fname)
-		open(fname, 'wb').write(data[fnlen+4:])
+		content = akes_aes.decrypt(data[fnlen+4:])
+		open(fname, 'wb').write(content)
 		wprint(f'scp<< received a file \'{fname}\'', end='')
 	except Exception as e:
 		print('recv file:', e)
@@ -314,8 +316,12 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 
 	elif mmt == MMT.CIPHER_TEXT:
 		# decrypt
-		data = akes_aes.decrypt(data)
-		wprint(f'C<< {data.decode()}', end='')
+		try:
+			data = akes_aes.decrypt(data)
+		except Exception as e:
+			print('AES decrypt ERR<<', e)
+		else:
+			wprint(f'C<< {data.decode()}', end='')
 
 	elif mmt == MMT.CIPHER_ADDR:
 		print('recv the other addr ...')

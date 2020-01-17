@@ -4,6 +4,9 @@ from ctypes import cdll
 
 _getch = cdll.LoadLibrary('akm/c/_getch.so')
 
+def peek():
+	return _getch.peek()
+
 def getch():
 	return _getch.getch()
 
