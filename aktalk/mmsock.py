@@ -24,6 +24,7 @@ class MMT(IntEnum):
 	CIPHER_TEXT = 40 # Cipher text
 	CIPHER_ADDR = 50 # Cipher addr (ip, port)
 	COMMAND = 60 # command
+	SCP_FILE = 70 # scp file
 
 	# semaphore message:
 	SM_NONE = 0x2410 # no one is online
@@ -32,6 +33,7 @@ class MMT(IntEnum):
 	SM_ENCRYPT = 0x2440 # start encrypt messages
 	SM_CLOSE = 0x2450 # the other is disconnected
 	SM_BUSY = 0x2460 # server is busy
+	SM_EXIT = 0x2470 # exit
 
 MAX_RECV = 1024 # Maximum receive size per time
 

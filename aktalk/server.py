@@ -43,9 +43,18 @@ def read(conn, mask):
 	data,mmt = mmconn.recv()
 
 	try:
+		ret = 1
+
 		if mmt == MMT.HEART_BEAT:
 			i = mmsocks.index(mmconn)
 			mmsocks[i].HP = mm_hp
+		elif mmt == MMT.SM_EXIT:
+			print('Exit:', addr)
+			close_mmsock(mmconn, MMT.SM_EXIT)
+		else:
+			ret = 0
+
+		if ret:
 			return
 
 		if data or mmt:
@@ -63,22 +72,30 @@ def read(conn, mask):
 					other.sendsem(mmt)
 		else:
 			print('closing', addr)
-			i = mmsocks.index(mmconn)
-			dprint('mmsocks.index(mmconn) =', i)
-			mmsocks.pop(i)
-			if mmsocks:
-				mmsocks[0].sendsem(MMT.SM_CLOSE)
-			selector.unregister(conn)
-			conn.close()
+			close_mmsock(mmconn)
 
 	except Exception as e:
 		print('server::read', e)
-		try:
-			i = mmsocks.index(mmconn)
-			mmsocks.pop(i)
-			conn.close()
-		except Exception as e:
-			print('server::read e2:', e)
+		close_mmsock(mmconn)
+
+
+def close_mmsock(mmconn, sem=MMT.SM_CLOSE):
+	'''[noexcept]'''
+	try:
+		i = mmsocks.index(mmconn)
+		dprint('mmsocks.index(mmconn) =', i)
+		mmsocks.pop(i)
+		cn = len(mmsocks)
+		if cn == 1:
+			mmsocks[0].sendsem(sem)
+		if len(mmsocks) >= 2:
+			mmsocks[0].sendsem(MMT.SM_SYMGEN)
+			mmsocks[1].sendsem(MMT.SM_PUBGEN)
+		selector.unregister(mmconn.sock)
+		mmconn.sock.close()
+	except Exception as e:
+		print('close_mmsock', e)
+		pass
 
 
 @unique

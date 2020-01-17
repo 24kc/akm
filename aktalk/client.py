@@ -9,6 +9,7 @@ from enum import IntEnum,unique
 from akm.aktalk.mmsock import *
 from akm.akes import Akes
 from akm.io.o import *
+from akm.io import fm
 from akm.c import getch
 
 def exit():
@@ -23,6 +24,8 @@ akes_rsa = None
 akes_aes = None
 # status
 conn_stat = False
+# server
+server_addr = None
 # my ip
 my_addr = None
 # the other addr (ip, port)
@@ -31,6 +34,8 @@ the_other = None
 msg_list = []
 wait_print = False
 msg_end = '\n>> '
+# File storage directory
+download_dir = 'download'
 
 
 def send():
@@ -45,12 +50,20 @@ def send():
 		else:
 			wait_print = True
 			getch.ungetc(c)
-		###
+
 		s = input()
+
+		cache_print()
+
+		is_cmd = command(s)
+
+		if is_cmd:
+			continue
+
 		if not conn_stat:
 			print('Please wait for others to connect ...')
 			continue
-		cache_print()
+
 		if s:
 			mmsock.send(akes_aes.encrypt(s.encode()), MMT.CIPHER_TEXT)
 
@@ -59,9 +72,129 @@ def recv():
 		data,mmt = mmsock.recv()
 		flag = msg_proc(data, mmt)
 		if not flag:
-			print('\n\nERROR: connect to server closed')
+			print(f'\n\nconnect to server{server_addr} closed')
 			cache_print()
 			os._exit(1)
+
+@unique
+class CMD(IntEnum):
+	'''command'''
+	NULL = 0
+	EXIT = 0x2400
+	EXIT_ = 0x2401
+	SCP = 0x2410
+	SCP_ = 0x2411
+	WHO = 0x2420
+	WHO_ = 0x2421
+	ME = 0x2430
+	ME_ = 0x2431
+
+commands = {
+	'exit': CMD.EXIT,
+	'exit?': CMD.EXIT_,
+	'scp': CMD.SCP,
+	'scp?': CMD.SCP_,
+	'who': CMD.WHO,
+	'who?': CMD.WHO_,
+	'me': CMD.ME,
+	'me?': CMD.ME_,
+}
+
+def send_file(fname):
+	fname = os.path.expanduser(fname)
+	r = os.access(fname, os.F_OK | os.R_OK)
+	if not r:
+		print('File does not exist or is unreadable')
+		return 1
+	content = open(fname, 'rb').read()
+	if not content:
+		print('Empty file, cancel sending')
+		return 1
+	fname = fm.basename(fname)
+	fnb = fname.encode()
+	data = int.to_bytes(len(fnb), 4, 'little') + fnb + content
+	mmsock.send(data, MMT.SCP_FILE)
+	return 0
+
+def recv_file(data):
+	ddir = download_dir
+	try:
+		if not os.access(ddir, os.F_OK):
+			os.mkdir(ddir, 0o775)
+		if not os.path.isdir(ddir):
+			wprint('Warning<< scp<<', ddir, 'is not a directory, redirect to current directory', end='')
+			ddir = '.'
+		fnlen = int.from_bytes(data[:4], 'little')
+		fname = data[4: fnlen+4].decode()
+		fname = ddir + '/' + fname
+		fname = fm.unique_fname(fname)
+		open(fname, 'wb').write(data[fnlen+4:])
+		wprint(f'scp<< received a file \'{fname}\'', end='')
+	except Exception as e:
+		print('recv file:', e)
+		return False
+	return True
+
+def cmd_proc(argv):
+	argc = len(argv);
+	if not argc:
+		return
+
+	cmdstr = argv[0]
+	cmd = commands.get(cmdstr)
+
+	if not cmd:
+		print('unrecognized command \'' + cmdstr + '\'')
+		return 1
+
+	if cmd == CMD.EXIT_:
+		print('Exit chat, close the connection to the server')
+	elif cmd == CMD.EXIT:
+		mmsock.sendsem(MMT.SM_EXIT)
+	elif cmd == CMD.SCP_:
+		print('scp [file]\nSend file to the other [AES]')
+	elif cmd == CMD.SCP:
+		if argc >= 2:
+			if not conn_stat:
+				print('Please wait for others to connect ...')
+				return 1
+			return send_file(argv[1])
+		else:
+			cmd = CMD.NULL
+	elif cmd == CMD.WHO:
+		print(the_other)
+	elif cmd == CMD.WHO_:
+		print('Print the ip address of the other')
+	elif cmd == CMD.ME:
+		print(my_addr)
+	elif cmd == CMD.ME_:
+		print('Print the ip address of me')
+	else:
+		assert False,'cmd_proc error'
+
+	if not cmd:
+		print('missing argument after \'' + cmdstr + '\'')
+
+	return 0
+
+def command(cmd:str):
+	try:
+		symbol = ':'
+		if not cmd.startswith(symbol):
+			return 0
+		cmd = cmd[len(symbol):]
+		cmd = cmd.replace('\t', ' ')
+		argv = cmd.split(' ')
+		try:
+			while True:
+				argv.remove('')
+		except:
+			pass
+		cmd_proc(argv)
+		return 1
+	except Exception as e:
+		print('command err:', e)
+		pass
 
 def heart_beat():
 	while True:
@@ -113,11 +246,14 @@ def sem_proc(mmt):
 	elif mmt == MMT.SM_BUSY:
 		print('\ne, There are already at least 2 users connected to the server', end=msg_end)
 
-	elif mmt == MMT.SM_CLOSE:
+	elif mmt in (MMT.SM_CLOSE, MMT.SM_EXIT):
 		conn_stat = False
 		cache_print()
 		print()
-		print(f'Warning<< {the_other} is disconnected', end=msg_end)
+		if mmt == MMT.SM_CLOSE:
+			print(f'Warning<< {the_other} is disconnected', end=msg_end)
+		else:
+			print(f'Warning<< {the_other} has exited', end=msg_end)
 
 	else:
 		return False
@@ -191,6 +327,9 @@ def msg_proc(data, mmt=MMT.PLAIN_TEXT):
 	elif mmt == MMT.COMMAND:
 		pass
 
+	elif mmt == MMT.SCP_FILE:
+		return recv_file(data)
+
 	else:
 		raise ValueError('msg_proc error', mmt)
 
@@ -263,7 +402,9 @@ def main(argv):
 	global mmsock
 	mmsock = MMSock(sock)
 
-	sock.connect((ip, port))
+	global server_addr
+	server_addr = (ip, port)
+	sock.connect(server_addr)
 
 	try:
 		t_heart = Thread(target=heart_beat)
