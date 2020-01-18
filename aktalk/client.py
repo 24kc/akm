@@ -185,6 +185,10 @@ def command(cmd:str):
 		if not cmd.startswith(symbol):
 			return 0
 		cmd = cmd[len(symbol):]
+		if cmd.lstrip().startswith('!'):
+			i = cmd.find('!')
+			os.system(cmd[i+1:])
+			return 1
 		cmd = cmd.replace('\t', ' ')
 		argv = cmd.split(' ')
 		try:
